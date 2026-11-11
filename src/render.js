@@ -59,6 +59,16 @@ function shortName(name) {
   return m ? `${m[1]}.${m[2]}` : name;
 }
 
+// 来源助手的名字：Claude（Claude Code → Codex）或 Codex（Codex → Claude Code）
+let A = 'Claude';
+let SRC = 'Claude Code';
+let DST = 'Codex';
+function setAgent(data) {
+  A = data.meta.agent || 'Claude';
+  SRC = A === 'Codex' ? 'Codex' : 'Claude Code';
+  DST = A === 'Codex' ? 'Claude Code' : 'Codex';
+}
+
 const SILENT_TOOLS = /(update_plan|mark_chapter|ToolSearch)$/;
 
 // 工具调用的一行描述
@@ -72,7 +82,7 @@ function toolSummary(item, cwd) {
     case 'Read':
       return `Read ${r(i.file_path)}`;
     case 'Write':
-      return `Write ${r(i.file_path)}（${String(i.content || '').split('\n').length} 行）`;
+      return i.content ? `Write ${r(i.file_path)}（${String(i.content).split('\n').length} 行）` : `Write ${r(i.file_path)}（新建）`;
     case 'Edit':
     case 'MultiEdit':
       return `Edit ${r(i.file_path)}`;
@@ -93,6 +103,10 @@ function toolSummary(item, cwd) {
       return `Skill ${i.skill}` + (i.args ? ` ${oneLine(i.args, 60)}` : '');
     case 'TodoWrite':
       return '更新任务列表';
+    case 'AskUser':
+      return `向用户提问：${oneLine(i.question, 200)}`;
+    case 'view_image':
+      return `查看图片 ${r(i.path)}`;
     default:
       if (/wrap_up$/.test(name)) return `阶段小结：${oneLine(i.recap, 300)}`;
       return `${shortName(name)} ${oneLine(JSON.stringify(i), 120)}`;
@@ -127,7 +141,7 @@ function renderTurnCondensed(turn, idx, cwd, level) {
   const texts = turn.items.filter((x) => x.type === 'text');
   const tools = turn.items.filter((x) => x.type === 'tool' && !SILENT_TOOLS.test(x.name));
   if (caps.others && texts.length > 1) {
-    for (const t of texts.slice(0, -1).slice(-caps.others)) out.push(`- Claude：${oneLine(t.text, caps.otherText)}`);
+    for (const t of texts.slice(0, -1).slice(-caps.others)) out.push(`- ${A}：${oneLine(t.text, caps.otherText)}`);
   }
   const edited = [...new Set(tools.filter((t) => ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'].includes(t.name) && !(t.result && t.result.isError)).map((t) => rel(t.input.file_path || t.input.notebook_path, cwd)))];
   if (edited.length) out.push(`- 改动：${edited.slice(0, 12).map((f) => '`' + f + '`').join('、')}${edited.length > 12 ? ` 等 ${edited.length} 个` : ''}`);
@@ -138,7 +152,7 @@ function renderTurnCondensed(turn, idx, cwd, level) {
   for (const t of tools.filter((t) => /wrap_up$/.test(t.name))) out.push(`- 📌 ${toolSummary(t, cwd)}`);
   const errs = turn.items.filter((x) => x.type === 'error');
   for (const e of errs.slice(-2)) out.push(`- ⚠ 错误：${oneLine(e.text, 160)}`);
-  if (texts.length) out.push(`- **Claude 本轮最后说**：${oneLine(texts[texts.length - 1].text, caps.lastText)}`);
+  if (texts.length) out.push(`- **${A} 本轮最后说**：${oneLine(texts[texts.length - 1].text, caps.lastText)}`);
   return out.join('\n');
 }
 
@@ -150,7 +164,7 @@ function renderTurnDetailed(turn, idx, cwd, { textCap, resultCap, maxItems = Inf
   const visible = turn.items.filter((it) => !(it.type === 'tool' && SILENT_TOOLS.test(it.name)));
   if (visible.length > maxItems) out.push(`（本轮前面还有 ${visible.length - maxItems} 步已省略，完整过程见 .handoff/transcript.md）`);
   for (const it of visible.slice(-maxItems)) {
-    if (it.type === 'text') out.push('**Claude：** ' + demote(trunc(it.text, textCap)));
+    if (it.type === 'text') out.push(`**${A}：** ` + demote(trunc(it.text, textCap)));
     else if (it.type === 'error') out.push(`⚠ **错误：** ${trunc(it.text, 500)}`);
     else if (it.type === 'notice') out.push(`（系统通知：${oneLine(it.text, 200)}）`);
     else if (it.type === 'tool') {
@@ -176,6 +190,7 @@ function readPlan(data) {
 }
 
 function renderHandoff(data, git, opts = {}) {
+  setAgent(data);
   const { meta, turns } = data;
   const cwd = meta.cwd;
   const maxChars = opts.maxChars || 30000;
@@ -183,10 +198,10 @@ function renderHandoff(data, git, opts = {}) {
   const humanTurns = turns.filter((t) => t.user);
 
   const head = [];
-  head.push('# Claude Code → Codex 交接文档');
-  head.push(`> 由 cc2codex 于 ${fmtTs(new Date().toISOString())} 从本地 Claude Code 会话记录自动提取，没有经过任何模型二次总结。文中的「Claude」指上一位开发助手，「用户」就是现在和你对话的人。`);
+  head.push(`# ${SRC} → ${DST} 交接文档`);
+  head.push(`> 由 cc2codex 工具于 ${fmtTs(new Date().toISOString())} 从本地 ${SRC} 会话记录自动提取，没有经过任何模型二次总结。文中的「${A}」指上一位开发助手，「用户」就是现在和你对话的人。`);
   head.push(`## 给接手者的说明
-1. 这是一个开发到一半被打断的会话（通常是 Claude 额度用完）。你的任务是**接着做下去**，不是从头再来。
+1. 这是一个开发到一半被打断的会话（通常是 ${A} 额度用完）。你的任务是**接着做下去**，不是从头再来。
 2. 建议阅读顺序：「用户的全部诉求」→「当前任务列表 / 计划」→「中断前最后的现场」。时间线用来补背景。
 3. 记录可能落后于代码。动手前先跑 \`git status\` / \`git diff\` 核对，**两者不一致时以代码为准**。
 4. 开始改代码前，先用两三句话向用户复述：目标是什么、已经完成了什么、你准备的下一步，等用户确认。
@@ -196,16 +211,16 @@ function renderHandoff(data, git, opts = {}) {
 - 项目目录：\`${cwd || '?'}\`
 - 会话：${meta.title ? `「${meta.title}」 ` : ''}\`${meta.sessionId || path.basename(meta.file, '.jsonl')}\`
 - 时间：${fmtTs(meta.firstTs)} → ${fmtTs(meta.lastTs)}，共 ${humanTurns.length} 轮用户消息
-- Git 分支（会话中）：${meta.gitBranch || '无'}；Claude Code 版本：${meta.version || '?'}`);
+- Git 分支（会话中）：${meta.gitBranch || '无'}；${SRC} 版本：${meta.version || '?'}`);
 
   const state = ['## 中断状态'];
   if (data.interruption) state.push(`- ${data.interruption}`);
   const lastErr = data.errors[data.errors.length - 1];
   if (lastErr) state.push(`- 最近一次 API 错误（${fmtTs(lastErr.ts)}，第 ${lastErr.turnIndex + 1} 轮）：${oneLine(lastErr.text, 200)}`);
   const lastRecap = data.recaps[data.recaps.length - 1];
-  if (lastRecap) state.push(`- Claude 最近一次阶段小结（第 ${lastRecap.turnIndex + 1} 轮）：${oneLine(lastRecap.text, 400)}`);
+  if (lastRecap) state.push(`- ${A} 最近一次阶段小结（第 ${lastRecap.turnIndex + 1} 轮）：${oneLine(lastRecap.text, 400)}`);
   if (data.tasks && data.tasks.some((t) => t.status !== 'completed')) state.push('- 任务列表里还有未完成的项，见下方。');
-  if (state.length === 1) state.push('- 会话正常结束在 Claude 的一段回复上，没有发现明显的中断信号；请结合最后的现场判断是否还有没做完的事。');
+  if (state.length === 1) state.push(`- 会话正常结束在 ${A} 的一段回复上，没有发现明显的中断信号；请结合最后的现场判断是否还有没做完的事。`);
 
   const asksSec = (perAsk) => {
     const asks = ['## 用户的全部诉求（按时间顺序）'];
@@ -224,7 +239,7 @@ function renderHandoff(data, git, opts = {}) {
   const filesSec = [];
   if (data.files.size) {
     const list = [...data.files.entries()].sort((a, b) => b[1].lastTurn - a[1].lastTurn);
-    filesSec.push('## Claude 改动过的文件（最近改动的在前）\n' + list.slice(0, 60).map(([f, v]) => `- \`${rel(f, cwd)}\` ×${v.count}（最后在第 ${v.lastTurn + 1} 轮）`).join('\n') + (list.length > 60 ? `\n- …另有 ${list.length - 60} 个` : ''));
+    filesSec.push(`## ${A} 改动过的文件（最近改动的在前）\n` + list.slice(0, 60).map(([f, v]) => `- \`${rel(f, cwd)}\` ×${v.count}（最后在第 ${v.lastTurn + 1} 轮）`).join('\n') + (list.length > 60 ? `\n- …另有 ${list.length - 60} 个` : ''));
   }
   if (git) filesSec.push('## Git 现状（生成本文件时）\n' + fence(git));
 
@@ -241,7 +256,7 @@ function renderHandoff(data, git, opts = {}) {
     return tail;
   };
 
-  const compactSec = (cap) => (data.compact ? [`## 早期对话摘要（Claude 自动压缩上下文时写的，覆盖第 ${data.compact.turnIndex} 轮之前）\n\n${trunc(demote(stripReminders(data.compact.text)), cap)}`] : []);
+  const compactSec = (cap) => (data.compact ? [`## 早期对话摘要（${A} 自动压缩上下文时写的，覆盖第 ${data.compact.turnIndex} 轮之前）\n\n${trunc(demote(stripReminders(data.compact.text)), cap)}`] : []);
 
   const timelineSec = (level) => {
     const out = ['## 工作时间线（精简）'];
@@ -269,11 +284,12 @@ function renderHandoff(data, git, opts = {}) {
 }
 
 function renderTranscript(data) {
+  setAgent(data);
   const { meta, turns } = data;
   const out = [`# 完整时间线：${meta.title || meta.sessionId || ''}`, `> 项目 \`${meta.cwd}\`，原始记录 \`${meta.file}\`。思考过程和大块工具输出已省略。`];
   turns.forEach((t, i) => {
     for (const c of data.compacts.filter((c) => c.turnIndex === i)) {
-      out.push(`---\n\n## ⟲ 此处 Claude 压缩过上下文，压缩摘要如下\n\n${demote(stripReminders(c.text))}\n\n---`);
+      out.push(`---\n\n## ⟲ 此处 ${A} 压缩过上下文，压缩摘要如下\n\n${demote(stripReminders(c.text))}\n\n---`);
     }
     out.push(renderTurnDetailed(t, i, meta.cwd, { textCap: 6000, resultCap: 500 }));
   });

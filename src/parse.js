@@ -82,7 +82,7 @@ function slimRecord(o) {
 }
 
 async function parseSession(file) {
-  const meta = { file, title: null, cwd: null, gitBranch: null, version: null, firstTs: null, lastTs: null, sessionId: null };
+  const meta = { agent: 'Claude', file, title: null, cwd: null, gitBranch: null, version: null, firstTs: null, lastTs: null, sessionId: null };
   const records = new Map(); // uuid → slim record
   let lastUuid = null;
   const msgOrder = []; // 主线消息在文件中的顺序，用于跨压缩边界续接
@@ -232,7 +232,8 @@ function analyze(meta, events) {
           if (PLAN_RE.test(fp)) {
             planPath = fp;
             if (e.name === 'Write' && inp.content) planText = inp.content;
-          } else if (!(res && res.isError)) {
+          } else if (!(res && res.isError) && !/[\\/]\.codex[\\/]/i.test(fp)) {
+            // ~/.codex 下是 Codex 自己的临时文件（截图脚本等），不算项目改动
             const f = files.get(fp) || { count: 0, lastTurn: 0 };
             f.count += 1;
             f.lastTurn = turns.length - 1;
@@ -248,17 +249,18 @@ function analyze(meta, events) {
   }
 
   // 判断中断状态
+  const A = meta.agent || 'Claude';
   const lastTurn = turns[turns.length - 1];
   let interruption = null;
   if (lastTurn) {
     const last = lastTurn.items[lastTurn.items.length - 1];
-    if (!last) interruption = '用户最后一条消息发出后，Claude 还没有任何回应。';
+    if (!last) interruption = `用户最后一条消息发出后，${A} 还没有任何回应。`;
     else if (last.type === 'error') interruption = `会话以错误结束：${last.text}`;
     else if (last.type === 'tool' && !last.result) interruption = `中断在工具调用 ${last.name} 上，没有拿到结果。`;
-    else if (last.type === 'tool') interruption = `最后一步是工具调用 ${last.name}，之后 Claude 没有再给出结论（可能被中断）。`;
+    else if (last.type === 'tool') interruption = `最后一步是工具调用 ${last.name}，之后 ${A} 没有再给出结论（可能被中断）。`;
   }
 
   return { meta, turns, compact, compacts, tasks, tasksTs, files, planPath, planText, recaps, errors, interruption };
 }
 
-module.exports = { parseSession };
+module.exports = { parseSession, analyze };

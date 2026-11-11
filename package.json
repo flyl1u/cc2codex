@@ -1,9 +1,10 @@
 {
   "name": "cc2codex",
   "version": "0.1.0",
-  "description": "把 Claude Code 会话整理成交接文档，让 Codex 无缝接着开发",
+  "description": "在 Claude Code 和 Codex 之间接力开发：把一边的会话整理成交接文档，让另一边无缝接着干",
   "bin": {
-    "cc2codex": "bin/cc2codex.js"
+    "cc2codex": "bin/cc2codex.js",
+    "codex2cc": "bin/codex2cc.js"
   },
   "files": [
     "bin",
