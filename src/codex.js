@@ -73,13 +73,12 @@ function threadTitles() {
 
 const norm = (p) => path.resolve(p).replace(/[\\/]+$/, '').toLowerCase();
 
-// 某个项目目录下的 Codex 线程（不含子代理），每个线程取最新的那一页文件
-function findCodexSessions(projectDir) {
-  const want = norm(projectDir);
+// 所有 Codex 线程（不含子代理），每个线程取最新的那一页文件
+function allCodexThreads() {
   const titles = threadTitles();
   const byThread = new Map();
   for (const m of indexAll()) {
-    if (m.subagent || !m.cwd || norm(m.cwd) !== want) continue;
+    if (m.subagent || !m.cwd) continue;
     const prev = byThread.get(m.id);
     if (!prev || m.mtime > prev.mtime) byThread.set(m.id, m);
   }
@@ -88,11 +87,23 @@ function findCodexSessions(projectDir) {
     .sort((a, b) => b.mtime - a.mtime);
 }
 
+// 某个项目目录下的 Codex 线程
+function findCodexSessions(projectDir) {
+  const want = norm(projectDir);
+  return allCodexThreads().filter((m) => norm(m.cwd) === want);
+}
+
 function resolveCodexSession({ projectDir, session }) {
   if (session && (session.endsWith('.jsonl') || /[\\/]/.test(session))) {
     const m = readMeta(path.resolve(session));
     if (!m) throw new Error(`不是有效的 Codex 会话文件：${session}`);
     return { ...m, title: threadTitles().get(m.id) || null };
+  }
+  if (session) {
+    // 先在本项目里找，找不到再跨项目找（多会话接力时，新会话可能开在别的目录）
+    const hit = findCodexSessions(projectDir).find((s) => s.id.startsWith(session)) || allCodexThreads().find((s) => s.id.startsWith(session));
+    if (!hit) throw new Error(`没有 id 以 ${session} 开头的 Codex 会话，可用 --list 或 --interrupted --all-projects 查看。`);
+    return hit;
   }
   const list = findCodexSessions(projectDir);
   if (!list.length) {
@@ -100,11 +111,6 @@ function resolveCodexSession({ projectDir, session }) {
       `在 ${path.join(codexHome(), 'sessions')} 下没有找到项目 ${path.resolve(projectDir)} 的 Codex 会话。\n` +
         `请在 Codex 当时打开的项目目录运行，或用 --session <rollout 文件路径> 指定。`
     );
-  }
-  if (session) {
-    const hit = list.find((s) => s.id === session || s.id.startsWith(session));
-    if (!hit) throw new Error(`该项目下没有 id 以 ${session} 开头的 Codex 会话，可用 --list 查看。`);
-    return hit;
   }
   return list[0];
 }
@@ -384,4 +390,4 @@ async function parseCodexSession(head) {
   return data;
 }
 
-module.exports = { codexHome, findCodexSessions, resolveCodexSession, parseCodexSession };
+module.exports = { codexHome, allCodexThreads, findCodexSessions, resolveCodexSession, parseCodexSession };

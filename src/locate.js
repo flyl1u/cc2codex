@@ -12,7 +12,7 @@ function projectsRoot() {
   return path.join(claudeHome(), 'projects');
 }
 
-// Claude Code 把路径里所有非字母数字字符替换成 '-'，例如 D:\FocuSD → D--FocuSD
+// Claude Code 把路径里所有非字母数字字符替换成 '-'，例如 D:\my-app → D--my-app
 function encodeProjectPath(p) {
   return path.resolve(p).replace(/[^a-zA-Z0-9]/g, '-');
 }
@@ -81,17 +81,24 @@ function resolveSession({ projectDir, session }) {
     if (!fs.existsSync(file)) throw new Error(`找不到会话文件：${file}`);
     return { id: path.basename(file, '.jsonl'), file };
   }
+  if (session) {
+    // 先在本项目里找，找不到再跨项目按文件名找（多会话接力时，新会话可能开在别的目录）
+    const local = findSessions(projectDir).find((s) => s.id.startsWith(session));
+    if (local) return local;
+    let dirs = [];
+    try { dirs = fs.readdirSync(projectsRoot()); } catch { /* 没有 projects 目录 */ }
+    for (const d of dirs) {
+      const hit = listSessionFiles(path.join(projectsRoot(), d)).find((s) => s.id.startsWith(session));
+      if (hit) return hit;
+    }
+    throw new Error(`没有 id 以 ${session} 开头的 Claude Code 会话，可用 --list 或 --interrupted --all-projects 查看。`);
+  }
   const sessions = findSessions(projectDir);
   if (!sessions.length) {
     throw new Error(
       `在 ${projectsRoot()} 下没有找到项目 ${path.resolve(projectDir)} 的 Claude Code 会话。\n` +
         `请在项目根目录运行，或用 --session <会话文件路径> 指定。`
     );
-  }
-  if (session) {
-    const hit = sessions.find((s) => s.id === session || s.id.startsWith(session));
-    if (!hit) throw new Error(`该项目下没有 id 以 ${session} 开头的会话，可用 --list 查看。`);
-    return hit;
   }
   return sessions[0];
 }

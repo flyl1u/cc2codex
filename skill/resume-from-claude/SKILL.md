@@ -1,36 +1,63 @@
 ---
 name: resume-from-claude
 description: |
-  接手用户在 Claude Code 里做到一半的开发工作（通常是 Claude 额度用完了）。读取 cc2codex 从本地 Claude Code 会话记录提取的交接文档 .handoff/HANDOFF.md，核对代码现状后继续开发。
-  触发方式：「接着 Claude 的活」「继续 Claude Code 里的工作」「Claude 额度用完了，你接着做」「读一下 handoff」「resume from claude」
-  Use when the user wants to continue work that was started in Claude Code (e.g. Claude ran out of quota), or mentions .handoff/HANDOFF.md.
+  接手用户在 Claude Code 里做到一半的开发工作（通常是 Claude 额度用完了），支持多个中断的会话。用 cc2codex 从本地 Claude Code 会话记录生成交接文档，核对代码现状后继续开发。Codex 不能自己开新对话，所以有多个中断会话时，只接当前项目的一个，其余的给用户逐条可粘贴的接手指令。
+  触发方式：「接着 Claude 的活」「继续 Claude Code 里的工作」「Claude 额度用完了，你接着做」「接着 Claude 的会话 xxx 继续」「resume from claude」
+  Use when the user wants to continue work that was started in Claude Code (e.g. Claude ran out of quota).
 ---
 
 # resume-from-claude：接手 Claude Code 的半成品
 
-用户之前在 Claude Code 里开发这个项目，中途被打断了。你要做的是**接着做下去**，而不是重新设计。
+用户之前在 Claude Code 里开发，中途被打断了，可能不止一个会话。你要做的是**接着做下去**，而不是重新设计。
 
-## 第一步：拿到交接文档
+下文的 `cc2codex` 指：
 
-在项目根目录（Claude Code 当时打开的目录）运行下面的命令。它只读本地文件（`~/.claude/projects`），几秒钟完成。**每次接手都重新生成**，不要沿用已有的 `.handoff/`，因为那可能是旧的，或是另一个方向（Codex → Claude Code）留下的。
+```bash
+{{CLI}}
+```
 
-   ```bash
-   {{CLI}}
-   ```
+## 第一步：确定要接哪个会话
 
-   - 如果提示找不到会话：用 `{{CLI}} --list` 列出该项目的会话，或问用户 Claude Code 当时打开的是哪个目录，再用 `{{CLI}} <那个目录> -o .handoff` 生成。
-   - 用户说要接的不是最近一个会话时，用 `--list` 找到它，再用 `--session <id 前缀>` 指定。
+**用户已经点名了某个会话**（比如「接着 Claude 的会话 ca8efd19 继续」）：直接跳到第二步，用这个 id。
 
-## 第二步：读懂上下文
+否则，先看有哪些中断的会话：
 
-完整阅读 `.handoff/HANDOFF.md`，重点是：
+```bash
+{{CLI}} --interrupted -a --json
+```
 
-- **用户的全部诉求**：用户原话，是需求的唯一可靠来源。后面的消息会修正前面的，以最新的为准。
+它只读本地文件，不到一秒。根据 `interrupted` 列表：
+
+- **0 个**：就接当前项目最近的那个会话，第二步不加 `-s`。
+- **1 个**：接它。如果它的 `project` 不是当前打开的目录，先告诉用户，建议在 Codex 里打开那个目录再开始。
+- **多个**：你不能自己开新对话，所以：
+  1. 在当前对话里只接一个：`project` 等于当前目录的那个；有多个或都不是时，问用户接哪个。
+  2. 把其余的整理成清单交给用户，让用户在 Codex 里为每个会话各开一个新对话（先打开对应的项目文件夹），分别粘贴：
+     > 接着 Claude 的会话 `<shortId>` 继续
+     
+     清单里每一项都写明：短 id、标题、项目目录、中断原因。
+  3. 如果其中几个会话改的是同一个仓库，提醒用户它们可能互相冲突，建议各自用独立分支或 worktree。
+
+`running` 列表里的会话最近几分钟还在写入，可能仍在运行，不要去接，告诉用户即可。
+
+## 第二步：生成并阅读交接文档
+
+```bash
+{{CLI}} -s <shortId> -q
+```
+
+（没有指定会话时去掉 `-s <shortId>`。）它会打印交接文档的路径，形如 `<项目>/.handoff/claude-<id 前 8 位>/HANDOFF.md`。每个会话一个目录，多个会话同时接手也不会互相覆盖。每次都重新生成，不要沿用旧文件。
+
+完整阅读这份 `HANDOFF.md`，重点是：
+
+- **用户的全部诉求**：用户原话，是需求唯一可靠的来源。后面的消息会修正前面的，以最新的为准。
 - **中断状态 / 当前任务列表 / 计划文件**：做到哪一步了，还剩什么。
 - **中断前最后的现场**：Claude 最后在做什么、跑了什么命令、拿到什么结果。若中断在某个工具调用上，那一步很可能没做完或没做对。
-- **Git 现状**：注意会话可能改了项目目录以外的仓库，文档里会一并列出。
+- **Git 现状**：会话可能改了项目目录以外的仓库，文档里会一并列出。
 
-需要更多细节（某个决定的来由、某次报错的完整输出）时，到 `.handoff/transcript.md` 里搜索，不要整篇读完。
+需要更多细节（某个决定的来由、某次报错的完整输出）时，到同目录下的 `transcript.md` 里搜索，不要整篇读完。
+
+找不到会话时：用 `{{CLI}} --list -a` 列出所有项目的 Claude Code 会话，再问用户要接哪个。
 
 ## 第三步：核对，再复述
 

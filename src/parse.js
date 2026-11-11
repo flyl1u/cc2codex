@@ -24,7 +24,9 @@ function textOf(content) {
 // 把斜杠命令包装成可读形式，过滤掉本地命令输出等噪音
 function cleanHumanText(t) {
   if (!t) return null;
-  const s = t.trim();
+  // 桌面版会把 <system-reminder> 等系统提醒存成用户消息，去掉后为空就不是用户说的话
+  const s = t.replace(/<(system-reminder|task-notification)>[\s\S]*?<\/\1>/g, '').trim();
+  if (!s) return null;
   if (/^<local-command-(stdout|stderr)>/.test(s)) return null;
   if (/^Caveat: The messages below were generated/.test(s)) return null;
   const cmd = s.match(/<command-name>([^<]*)<\/command-name>/);

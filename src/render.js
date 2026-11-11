@@ -162,7 +162,7 @@ function renderTurnDetailed(turn, idx, cwd, { textCap, resultCap, maxItems = Inf
   if (turn.user) out.push('**用户：**\n\n' + quote(trunc(turn.user, textCap * 2)));
   for (const img of turn.images) out.push(`（附图：\`${img}\`）`);
   const visible = turn.items.filter((it) => !(it.type === 'tool' && SILENT_TOOLS.test(it.name)));
-  if (visible.length > maxItems) out.push(`（本轮前面还有 ${visible.length - maxItems} 步已省略，完整过程见 .handoff/transcript.md）`);
+  if (visible.length > maxItems) out.push(`（本轮前面还有 ${visible.length - maxItems} 步已省略，完整过程见同目录下的 transcript.md）`);
   for (const it of visible.slice(-maxItems)) {
     if (it.type === 'text') out.push(`**${A}：** ` + demote(trunc(it.text, textCap)));
     else if (it.type === 'error') out.push(`⚠ **错误：** ${trunc(it.text, 500)}`);
@@ -205,7 +205,7 @@ function renderHandoff(data, git, opts = {}) {
 2. 建议阅读顺序：「用户的全部诉求」→「当前任务列表 / 计划」→「中断前最后的现场」。时间线用来补背景。
 3. 记录可能落后于代码。动手前先跑 \`git status\` / \`git diff\` 核对，**两者不一致时以代码为准**。
 4. 开始改代码前，先用两三句话向用户复述：目标是什么、已经完成了什么、你准备的下一步，等用户确认。
-5. 需要更多细节时看 \`.handoff/transcript.md\`（完整时间线），或原始记录 \`${meta.file}\`。`);
+5. 需要更多细节时看同目录下的 \`transcript.md\`（完整时间线），或原始记录 \`${meta.file}\`。`);
 
   head.push(`## 会话信息
 - 项目目录：\`${cwd || '?'}\`
