@@ -1,0 +1,17 @@
+{
+  "name": "cc2codex",
+  "version": "0.1.0",
+  "description": "把 Claude Code 会话整理成交接文档，让 Codex 无缝接着开发",
+  "bin": {
+    "cc2codex": "bin/cc2codex.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skill"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
