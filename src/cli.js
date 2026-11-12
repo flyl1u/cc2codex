@@ -9,6 +9,7 @@ const { parseSession } = require('./parse');
 const { codexHome, findCodexSessions, resolveCodexSession, parseCodexSession } = require('./codex');
 const { renderHandoff, renderTranscript, fmtTs } = require('./render');
 const { scanSessions } = require('./status');
+const { redact } = require('./redact');
 
 const DIRECTIONS = {
   claude: {
@@ -45,6 +46,7 @@ function help(d) {
       --max-chars <n>       HANDOFF.md 的长度预算，默认 30000 字符
       --detail-turns <n>    末尾完整保留的轮数，默认 2
       --stdout              把 HANDOFF.md 打印到标准输出，不写文件
+      --no-redact           不脱敏（默认会把疑似密钥、令牌、密码替换成 [已脱敏]）
   -q, --quiet               不打印提示信息（适合放进 hook）
   -h, --help                显示帮助
 
@@ -53,7 +55,7 @@ function help(d) {
 }
 
 function parseArgs(argv) {
-  const a = { project: null, session: null, out: null, maxChars: 30000, detailTurns: 2, list: false, stdout: false, quiet: false, cmd: null, interrupted: false, allProjects: false, sinceHours: 24, json: false };
+  const a = { project: null, session: null, out: null, maxChars: 30000, detailTurns: 2, list: false, stdout: false, quiet: false, cmd: null, interrupted: false, allProjects: false, sinceHours: 24, json: false, redact: true };
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     const next = () => {
@@ -72,6 +74,7 @@ function parseArgs(argv) {
     else if (x === '-a' || x === '--all-projects') a.allProjects = true;
     else if (x === '--since') a.sinceHours = Math.max(1, parseFloat(next()) || 24);
     else if (x === '--json') a.json = true;
+    else if (x === '--no-redact') a.redact = false;
     else if (x === 'install-skill' && !a.cmd && !a.project) a.cmd = 'install-skill';
     else if (x.startsWith('-')) throw new Error(`未知选项 ${x}，用 --help 查看用法`);
     else a.project = x;
@@ -207,9 +210,15 @@ function installSkills() {
     const cli = `node "${path.join(root, 'bin', t.cmd)}"`;
     const body = fs.readFileSync(path.join(root, 'skill', t.name, 'SKILL.md'), 'utf8').replace(/\{\{CLI\}\}/g, cli);
     const dest = path.join(t.dir, t.name);
+    const file = path.join(dest, 'SKILL.md');
     fs.mkdirSync(dest, { recursive: true });
-    fs.writeFileSync(path.join(dest, 'SKILL.md'), body);
-    console.log(`已安装 ${t.app} skill：${path.join(dest, 'SKILL.md')}`);
+    // 已有版本和要写入的不同（可能被用户手改过），先备份再覆盖
+    if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') !== body) {
+      fs.copyFileSync(file, file + '.bak');
+      console.log(`  原有的 ${t.name} 与新版不同，已备份为 SKILL.md.bak`);
+    }
+    fs.writeFileSync(file, body);
+    console.log(`已安装 ${t.app} skill：${file}`);
   }
   console.log('如果之后移动了 cc2codex 的目录，重新运行一次 install-skill 即可。');
 }
@@ -247,7 +256,16 @@ async function run(dirKey, argv) {
   if (!data.meta.cwd) data.meta.cwd = target;
   const sid = String(data.meta.sessionId || s.id);
 
-  const handoff = renderHandoff(data, gitAll(target, [...data.files.keys()]), { maxChars: a.maxChars, detailTurns: a.detailTurns });
+  let handoff = renderHandoff(data, gitAll(target, [...data.files.keys()]), { maxChars: a.maxChars, detailTurns: a.detailTurns });
+  let transcript = renderTranscript(data);
+  let redacted = 0;
+  if (a.redact) {
+    const h = redact(handoff);
+    const t = redact(transcript);
+    handoff = h.text;
+    transcript = t.text;
+    redacted = h.count + t.count;
+  }
   if (a.stdout) return void process.stdout.write(handoff);
 
   // 每个会话一个子目录，多个会话同时接手时互不覆盖
@@ -255,7 +273,7 @@ async function run(dirKey, argv) {
   const outDir = path.resolve(a.out || path.join(handoffRoot, `${dirKey}-${sid.slice(0, 8)}`));
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, 'HANDOFF.md'), handoff);
-  fs.writeFileSync(path.join(outDir, 'transcript.md'), renderTranscript(data));
+  fs.writeFileSync(path.join(outDir, 'transcript.md'), transcript);
   // 让 .handoff 自己忽略自己，不污染用户的 git
   const giDir = a.out ? outDir : handoffRoot;
   const gi = path.join(giDir, '.gitignore');
@@ -274,6 +292,7 @@ async function run(dirKey, argv) {
   console.log(`✓ 已从 ${d.src} 会话 ${data.meta.title ? `「${data.meta.title}」` : s.id} 生成交接文档（${((Date.now() - started) / 1000).toFixed(1)}s）`);
   console.log(`  记录 ${(fs.statSync(s.file).size / 1048576).toFixed(1)}MB → HANDOFF.md ${(Buffer.byteLength(handoff) / 1024).toFixed(0)}KB，${humanTurns} 轮用户消息，${data.files.size} 个改动文件`);
   if (data.interruption) console.log(`  中断状态：${data.interruption}`);
+  if (redacted) console.log(`  已把 ${redacted} 处疑似密钥/令牌/密码替换成 [已脱敏]（需要原文用 --no-redact）`);
   console.log(`  输出：${path.join(relOut, 'HANDOFF.md')}、${path.join(relOut, 'transcript.md')}`);
   console.log(`  交接文档：${handoffPath}`);
   console.log(`\n在 ${d.dst} 里打开这个项目，发一句：`);

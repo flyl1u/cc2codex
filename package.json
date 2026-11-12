@@ -1,7 +1,21 @@
 {
   "name": "cc2codex",
-  "version": "0.1.0",
-  "description": "在 Claude Code 和 Codex 之间接力开发：把一边的会话整理成交接文档，让另一边无缝接着干",
+  "version": "0.2.0",
+  "description": "Hand off half-finished coding sessions between Claude Code and Codex. 在 Claude Code 和 Codex 之间接力开发。",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "ai-agents",
+    "handoff",
+    "session",
+    "cli"
+  ],
+  "homepage": "https://github.com/flyl1u/cc2codex#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/flyl1u/cc2codex.git"
+  },
+  "bugs": "https://github.com/flyl1u/cc2codex/issues",
   "bin": {
     "cc2codex": "bin/cc2codex.js",
     "codex2cc": "bin/codex2cc.js"
@@ -11,6 +25,9 @@
     "src",
     "skill"
   ],
+  "scripts": {
+    "test": "node --test"
+  },
   "engines": {
     "node": ">=18"
   },

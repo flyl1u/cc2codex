@@ -12,6 +12,7 @@
 - **不调用任何模型**：直接解析两个工具存在本地的会话记录，额度用完也能跑。
 - **去噪压缩**：几十到上百 MB 的记录压到 30KB 左右，丢掉思考过程、请求原文、文件快照、注入的系统提示等噪音。
 - **多会话**：一条命令找出所有项目里中断的会话。
+- **默认脱敏**：疑似 API Key、令牌、密码、私钥会替换成 `[已脱敏]`。
 - **零依赖**：只要 Node.js 18+。
 
 ## 安装（一次）
@@ -95,6 +96,7 @@ cc2codex --list -a          # 列出所有项目最近 24 小时的会话（带�
     --max-chars <n>       HANDOFF.md 的长度预算，默认 30000 字符
     --detail-turns <n>    末尾完整保留的轮数，默认 2
     --stdout              把 HANDOFF.md 打印到标准输出，不写文件
+    --no-redact           不脱敏，保留原文
 -q, --quiet               只打印交接文档路径（适合脚本和 hook）
 ```
 
@@ -104,12 +106,21 @@ cc2codex --list -a          # 列出所有项目最近 24 小时的会话（带�
 - `src/parse.js`：流式读取 Claude Code 的 JSONL，从最后一条消息沿 `parentUuid` 回溯出当前主线（排除回退分支和子代理侧链），并跨过自动压缩的边界；`analyze()` 从统一的事件流里还原任务列表、计划文件、改动文件、错误和中断点。
 - `src/codex.js`：索引 `~/.codex/sessions` 下所有 rollout 文件的 `session_meta`，按 `cwd` 找到项目的线程（排除子代理线程），沿 `history_base` 把分页或 fork 的多个文件拼成完整线程；工具调用优先取 Codex 自己的 `item_completed` 结构化记录（`CommandExecution`、`FileChange` 等），过滤掉 AGENTS.md、环境信息等注入的用户消息，再转换成同一种事件流交给 `analyze()`。
 - `src/status.js`：只读会话文件末尾判断是否中断，一次扫描所有项目也不到一秒。
+- `src/redact.js`：按常见形态（`sk-…`、`ghp_…`、`AKIA…`、JWT、`Bearer …`、`password=…`、私钥块等）脱敏。
 - `src/render.js`：按长度预算渲染，超出时逐级压缩时间线、早期摘要、诉求和现场。
 - `src/cli.js`：两个命令共用的入口逻辑。
 
 ## 安全提醒
 
-会话记录里可能有你贴过的密钥、命令输出等敏感内容，`.handoff/` 会原样带上一部分。它默认被 git 忽略，分享给别人前请自己检查一遍。
+会话记录里可能有你贴过的密钥、命令输出等敏感内容。cc2codex 默认会把常见形态的密钥脱敏，但规则不可能覆盖所有情况；`.handoff/` 默认被 git 忽略，分享给别人前请自己再检查一遍。
+
+## 开发
+
+```bash
+npm test   # node:test，用合成的会话记录覆盖两个方向的解析、多会话扫描、脱敏和命令行
+```
+
+GitHub Actions 会在 Windows、macOS、Linux 和 Node 18 / 20 / 22 上跑同一套测试。
 
 ## License
 

@@ -23,16 +23,27 @@ function walk(dir, out = []) {
   return out;
 }
 
-// 读第一行 session_meta（里面带着几十 KB 的系统提示词，所以多读一点）
+// 只读第一行 session_meta（里面带着几十 KB 的系统提示词），分块读到换行为止
+function readFirstLine(fd, maxBytes = 4 * 1024 * 1024) {
+  const chunks = [];
+  let pos = 0;
+  const buf = Buffer.alloc(64 * 1024);
+  while (pos < maxBytes) {
+    const n = fs.readSync(fd, buf, 0, buf.length, pos);
+    if (n <= 0) break;
+    const nl = buf.indexOf(10);
+    if (nl >= 0 && nl < n) { chunks.push(Buffer.from(buf.slice(0, nl))); break; }
+    chunks.push(Buffer.from(buf.slice(0, n)));
+    pos += n;
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 function readMeta(file) {
   let fd;
   try {
     fd = fs.openSync(file, 'r');
-    const buf = Buffer.alloc(512 * 1024);
-    const n = fs.readSync(fd, buf, 0, buf.length, 0);
-    const text = buf.slice(0, n).toString('utf8');
-    const nl = text.indexOf('\n');
-    const o = JSON.parse(nl >= 0 ? text.slice(0, nl) : text);
+    const o = JSON.parse(readFirstLine(fd));
     if (o.type !== 'session_meta') return null;
     const p = o.payload || {};
     const st = fs.statSync(file);
@@ -54,10 +65,11 @@ function readMeta(file) {
   }
 }
 
-let indexCache = null;
+const indexCache = new Map(); // CODEX_HOME → 索引
 function indexAll() {
-  if (!indexCache) indexCache = walk(path.join(codexHome(), 'sessions')).map(readMeta).filter(Boolean);
-  return indexCache;
+  const home = codexHome();
+  if (!indexCache.has(home)) indexCache.set(home, walk(path.join(home, 'sessions')).map(readMeta).filter(Boolean));
+  return indexCache.get(home);
 }
 
 function threadTitles() {
@@ -278,6 +290,13 @@ function itemToCalls(item) {
     }
     case 'WebSearch':
       return [{ name: 'WebSearch', input: { query: item.query || '' }, result: { isError: false, text: '' } }];
+    case 'Plan':
+      // 计划模式产出的计划，交给 analyze 当作计划文件
+      return [{ name: 'ExitPlanMode', input: { plan: item.text || '' }, result: { isError: false, text: '' } }];
+    case 'Extension':
+      if (item.kind === 'web.search') return [{ name: 'WebSearch', input: { query: item.query || '' }, result: { isError: item.status === 'failed', text: '' } }];
+      if (item.kind === 'image_gen.generation') return [{ name: 'image_gen', input: { prompt: String(item.revisedPrompt || '').slice(0, 120) }, result: { isError: item.status === 'failed', text: '' } }];
+      return [];
     default:
       return [];
   }
@@ -289,7 +308,7 @@ function toEvents(records) {
   const meta = { cwd: null, gitBranch: null, version: null, firstTs: null, lastTs: null };
   let turnOpen = false;
   const pendingCalls = new Map(); // call_id → 展开后的事件 id 列表
-  const hasItems = records.some((o) => o.type === 'event_msg' && o.payload && o.payload.type === 'item_completed' && /^(CommandExecution|FileChange)$/.test((o.payload.item || {}).type));
+  const hasItems = records.some((o) => o.type === 'event_msg' && o.payload && o.payload.type === 'item_completed' && /^(CommandExecution|FileChange|Plan)$/.test((o.payload.item || {}).type));
   const pendingExec = new Map(); // hasItems 模式下尚未拿到输出的 exec 调用：call_id → 占位事件
   let seq = 0;
 

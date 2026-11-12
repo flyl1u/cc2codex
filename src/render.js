@@ -107,6 +107,10 @@ function toolSummary(item, cwd) {
       return `向用户提问：${oneLine(i.question, 200)}`;
     case 'view_image':
       return `查看图片 ${r(i.path)}`;
+    case 'ExitPlanMode':
+      return `提交计划（见「计划文件」一节）`;
+    case 'image_gen':
+      return `生成图片：${oneLine(i.prompt, 100)}`;
     default:
       if (/wrap_up$/.test(name)) return `阶段小结：${oneLine(i.recap, 300)}`;
       return `${shortName(name)} ${oneLine(JSON.stringify(i), 120)}`;
