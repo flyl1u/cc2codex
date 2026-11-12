@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/readme/hero.svg" alt="cc2codex: Claude Code and Codex hand a half-finished session to each other through one local HANDOFF.md that carries your requests, tasks and plan, changed files, and last steps." width="100%">
+</p>
+
 # cc2codex
 
 **English** · Hand off half-finished coding sessions between **Claude Code** and **Codex**. When one runs out of quota, `cc2codex` / `codex2cc` turns its local session log into a compact handoff document (user requests, task list, plan, changed files, git state, and the last few turns in full), and a skill on the other side reads it and picks up where the work stopped. It runs entirely offline and calls no model, so it still works after you have hit the limit. It also finds every interrupted session across projects: Claude Code can open a new session for each one, and Codex gets a ready-to-paste prompt per session.
@@ -124,4 +128,4 @@ GitHub Actions 会在 Windows、macOS、Linux 和 Node 18 / 20 / 22 上跑同一
 
 ## License
 
-MIT
+MIT。README 首图里的 Claude Code 和 Codex 图标来自 [LobeHub Icons](https://github.com/lobehub/lobe-icons)（MIT），商标归各自所有者；手写字形来自 Comic Relief 和 Kalam（SIL OFL）。详见 [assets/readme/SOURCES.md](assets/readme/SOURCES.md)。
